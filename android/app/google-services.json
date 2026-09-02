@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "269551109818",
+    "project_id": "roadtwin-ai",
+    "storage_bucket": "roadtwin-ai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:269551109818:android:14ca98dc2d20f426d1e483",
+        "android_client_info": {
+          "package_name": "com.roadtwin.ai"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAUG0d3CzvYdU97EBGViAb4emzYdttL9xk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
