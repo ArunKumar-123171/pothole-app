@@ -1,12 +1,20 @@
 package com.roadtwin.ai.feature.onboarding
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddRoad
+import androidx.compose.material.icons.filled.ElectricBolt
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,7 +24,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -26,15 +34,8 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun SplashScreen(onNavigateToDashboard: () -> Unit) {
-    var progress by remember { mutableFloatStateOf(0.1f) }
-
     LaunchedEffect(Unit) {
-        val steps = 20
-        for (i in 1..steps) {
-            delay(80)
-            progress = i.toFloat() / steps
-        }
-        delay(200)
+        delay(1600)
         onNavigateToDashboard()
     }
 
@@ -43,128 +44,178 @@ fun SplashScreen(onNavigateToDashboard: () -> Unit) {
             .fillMaxSize()
             .background(BackgroundWhite)
     ) {
-        // Soft scenic / mountain landscape watermark at top
+        // Perspective road drawing at background
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
-                .align(Alignment.TopCenter)
+                .height(360.dp)
+                .align(Alignment.Center)
         ) {
             val w = size.width
             val h = size.height
 
-            // Mountain silhouette background gradient
-            val mountainPath = Path().apply {
-                moveTo(0f, h * 0.7f)
-                lineTo(w * 0.25f, h * 0.35f)
-                lineTo(w * 0.5f, h * 0.6f)
-                lineTo(w * 0.75f, h * 0.25f)
-                lineTo(w, h * 0.55f)
-                lineTo(w, h)
-                lineTo(0f, h)
+            // Road surface
+            val roadPath = Path().apply {
+                moveTo(w * 0.42f, 0f)
+                lineTo(w * 0.58f, 0f)
+                lineTo(w * 0.95f, h)
+                lineTo(w * 0.05f, h)
                 close()
             }
             drawPath(
-                path = mountainPath,
+                path = roadPath,
                 brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFFE2E8F0).copy(alpha = 0.4f), Color.White)
+                    colors = listOf(Color(0xFFE2E8F0).copy(alpha = 0.3f), Color(0xFFF1F5F9))
                 )
             )
+
+            // Dashed center lane
+            val laneCount = 8
+            for (i in 0 until laneCount) {
+                val startY = (i.toFloat() / laneCount) * h
+                val endY = startY + (h / (laneCount * 2f))
+                val laneWidth = 2f + (i * 1.5f)
+                drawLine(
+                    color = RoadTwinBlue.copy(alpha = 0.4f),
+                    start = Offset(w * 0.5f, startY),
+                    end = Offset(w * 0.5f, endY),
+                    strokeWidth = laneWidth
+                )
+            }
         }
 
-        // Center Content: Logo Shield, App Name, Subtitle
+        // Main Brand & Logo Column
         Column(
             modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Hexagonal Shield with Road 'V'
-            Box(
-                modifier = Modifier.size(100.dp),
-                contentAlignment = Alignment.Center
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Center Branding Section
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
-
-                    // Hexagonal shield outline
-                    val shieldPath = Path().apply {
-                        moveTo(w * 0.5f, 0f)
-                        lineTo(w * 0.95f, h * 0.25f)
-                        lineTo(w * 0.95f, h * 0.75f)
-                        lineTo(w * 0.5f, h)
-                        lineTo(w * 0.05f, h * 0.75f)
-                        lineTo(w * 0.05f, h * 0.25f)
-                        close()
-                    }
-
-                    drawPath(
-                        path = shieldPath,
-                        color = RoadTwinOrange,
-                        style = Stroke(width = 6.dp.toPx())
+                // App Icon Badge
+                Box(
+                    modifier = Modifier
+                        .size(92.dp)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(RoadTwinBlue, RoadTwinBlueDark)
+                            )
+                        )
+                        .border(2.dp, RoadTwinBlueLight, RoundedCornerShape(24.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddRoad,
+                        contentDescription = "RoadTwin AI Icon",
+                        tint = Color.White,
+                        modifier = Modifier.size(52.dp)
                     )
+                }
 
-                    // Road V mark
-                    val vPath = Path().apply {
-                        moveTo(w * 0.28f, h * 0.35f)
-                        lineTo(w * 0.5f, h * 0.68f)
-                        lineTo(w * 0.72f, h * 0.35f)
-                    }
-                    drawPath(
-                        path = vPath,
-                        color = TextDarkCharcoal,
-                        style = Stroke(width = 8.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-                    )
+                Spacer(modifier = Modifier.height(20.dp))
 
-                    // Top center dot
-                    drawCircle(
-                        color = TextDarkCharcoal,
-                        radius = 5.dp.toPx(),
-                        center = Offset(w * 0.5f, h * 0.28f)
-                    )
+                // App Title
+                Text(
+                    text = "RoadTwin AI",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = TextNavy,
+                    letterSpacing = 0.5.sp
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Tagline
+                Text(
+                    text = "Smarter Roads • Safer Journeys",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = RoadTwinBlueDark,
+                    fontSize = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(36.dp))
+
+                // Feature Highlights Pills
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(0.85f)
+                ) {
+                    SplashFeaturePill(icon = Icons.Default.ElectricBolt, text = "Detect Potholes")
+                    SplashFeaturePill(icon = Icons.Default.Timer, text = "Save Time")
+                    SplashFeaturePill(icon = Icons.Default.Security, text = "Safer Communities")
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // App Name
-            Text(
-                text = "RoadTwin AI",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.ExtraBold,
-                color = TextDarkCharcoal,
-                letterSpacing = 0.5.sp
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Subtitle
-            Text(
-                text = "Intelligent Road Monitoring\nfor Safer Journeys",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextMediumGray,
-                textAlign = TextAlign.Center,
-                lineHeight = 20.sp
-            )
-        }
-
-        // Bottom Progress Bar
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(bottom = 48.dp, start = 64.dp, end = 64.dp)
-                .fillMaxWidth()
-        ) {
-            LinearProgressIndicator(
-                progress = { progress },
+            // Bottom Loading Indicator & Caption
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = RoadTwinOrange,
-                trackColor = SurfaceVariantLight
+                    .navigationBarsPadding()
+                    .padding(bottom = 32.dp)
+            ) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(28.dp),
+                    color = RoadTwinBlue,
+                    strokeWidth = 3.dp
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Building Better Roads...",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TextMediumGray,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SplashFeaturePill(
+    icon: ImageVector,
+    text: String
+) {
+    Surface(
+        color = BackgroundWhite.copy(alpha = 0.9f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorderColor),
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 1.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(RoadTwinBlueLight),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = RoadTwinBlue,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                color = TextNavy
             )
         }
     }

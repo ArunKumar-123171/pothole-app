@@ -1,6 +1,5 @@
 package com.roadtwin.ai.feature.dashboard
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,19 +12,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,309 +52,549 @@ fun DashboardScreen(
 
     Scaffold(
         bottomBar = {
-            DashboardBottomBar(
+            RoadTwinBottomBar(
                 currentScreen = "home",
                 onHomeClick = {},
-                onMapClick = onNavigateToMap,
-                onCameraClick = onNavigateToCamera,
                 onReportsClick = onNavigateToReports,
+                onMapClick = onNavigateToMap,
                 onSettingsClick = onNavigateToSettings,
                 onProfileClick = onNavigateToProfile
             )
         },
-        containerColor = BackgroundOffWhite
+        containerColor = BackgroundLight
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            contentPadding = PaddingValues(top = 12.dp, bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header: "Good Morning, Operator" and Notification Bell
+            // 1. Header: Branding & Profile Avatar
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Good Morning,",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMediumGray
-                        )
-                        Text(
-                            text = "Operator",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextDarkCharcoal
-                        )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(BackgroundWhite)
-                            .padding(4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Notifications,
-                            contentDescription = "Notifications",
-                            tint = TextDarkCharcoal,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .size(8.dp)
-                                .background(SeverityHigh, CircleShape)
-                        )
-                    }
-                }
+                DashboardHeader(
+                    onProfileClick = onNavigateToProfile
+                )
             }
 
-            // Road Health Score Card (Screens 3 & 9)
+            // 2. Greeting & Inspection Subtitle
             item {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = BackgroundWhite,
-                    border = BorderStroke(1.dp, CardBorderColor),
-                    shadowElevation = 1.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Road Health Score",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = TextMediumGray,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowUp,
-                                contentDescription = null,
-                                tint = TextMediumGray
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (uiState.roadHealthScore != null) {
-                                val score = uiState.roadHealthScore!!
-                                Column {
-                                    Text(
-                                        text = "$score / 100",
-                                        style = MaterialTheme.typography.headlineLarge,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = TextDarkCharcoal
-                                    )
-                                    Text(
-                                        text = if (score > 70) "Good" else if (score > 40) "Moderate" else "Critical",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (score > 70) SeverityLow else RoadTwinOrange,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                // Orange Smooth Sparkline Curve
-                                SparklineCanvas(color = RoadTwinOrange, isActive = true)
-                            } else {
-                                Column {
-                                    Text(
-                                        text = "No data",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextDarkCharcoal
-                                    )
-                                    Text(
-                                        text = "Not enough reports",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TextDisabled
-                                    )
-                                }
-
-                                // Gray Flat Line
-                                SparklineCanvas(color = SurfaceVariantLight, isActive = false)
-                            }
-                        }
-                    }
-                }
+                DashboardGreeting()
             }
 
-            // 4 Stat Cards in 2x2 Grid
+            // 3. PRIMARY HERO ACTION: START MONITORING CARD (Immediate access, no scrolling)
             item {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        HomeStatCard(
-                            title = "Total Potholes",
-                            count = "${uiState.totalPotholes}",
-                            icon = Icons.Outlined.WarningAmber,
-                            iconTint = RoadTwinOrange,
-                            modifier = Modifier.weight(1f)
-                        )
-                        HomeStatCard(
-                            title = "Pending Reports",
-                            count = "${uiState.pendingUploads}",
-                            icon = Icons.Outlined.ReportProblem,
-                            iconTint = SeverityHigh,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        HomeStatCard(
-                            title = "Synced Reports",
-                            count = "${uiState.syncedReports}",
-                            icon = Icons.Outlined.CloudDone,
-                            iconTint = SeverityLow,
-                            modifier = Modifier.weight(1f)
-                        )
-                        HomeStatCard(
-                            title = "High / Critical",
-                            count = "${uiState.highSeverityCount}",
-                            icon = Icons.Outlined.Shield,
-                            iconTint = SeverityHigh,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
+                StartMonitoringHeroCard(
+                    onClick = onNavigateToCamera
+                )
             }
 
-            // Recent Activity Section
+            // 4. ROAD HEALTH SCORE (Directly beneath Start Monitoring)
             item {
-                Text(
-                    text = "Recent Activity",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextDarkCharcoal
+                RoadHealthScoreCard(
+                    score = uiState.roadHealthScore,
+                    hasSessions = uiState.sessionsCount > 0
+                )
+            }
+
+            // 5. 2x2 STATISTICS GRID
+            item {
+                StatisticsGrid(
+                    totalPotholes = uiState.totalPotholes,
+                    pendingReports = uiState.pendingUploads,
+                    syncedReports = uiState.syncedReports,
+                    highSeverityCount = uiState.highSeverityCount
+                )
+            }
+
+            // 6. RECENT ACTIVITY
+            item {
+                SectionHeader(
+                    title = "Recent Activity",
+                    actionText = if (uiState.recentSessions.isNotEmpty()) "See All >" else null,
+                    onActionClick = onNavigateToReports
                 )
             }
 
             if (uiState.recentSessions.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "No recent activity",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMediumGray,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Start monitoring to create reports.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextDisabled
-                        )
-                    }
+                    RecentActivityEmptyState()
                 }
             } else {
                 items(uiState.recentSessions.take(3), key = { it.sessionId }) { session ->
-                    RecentSessionCard(
+                    RecentSessionItem(
                         session = session,
                         onClick = { onNavigateToDetail(session.sessionId) }
                     )
                 }
             }
 
-            // START MONITORING Big Orange Button
+            // 7. QUICK ACTIONS (View Reports, View Map)
             item {
-                Button(
-                    onClick = onNavigateToCamera,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(27.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = RoadTwinOrange)
-                ) {
-                    Text(
-                        text = "START MONITORING",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = Color.White,
-                        letterSpacing = 0.5.sp
-                    )
-                }
+                SectionHeader(
+                    title = "Quick Actions"
+                )
             }
 
-            // Secondary Outlined Action Row: [ View Reports ] and [ View Map ]
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedButton(
+                    RoadTwinOutlinedButton(
+                        text = "View Reports",
                         onClick = onNavigateToReports,
+                        icon = Icons.Outlined.Description,
+                        borderColor = CardBorderColor,
+                        contentColor = TextNavy,
+                        modifier = Modifier.weight(1f),
+                        height = 48.dp
+                    )
+
+                    RoadTwinOutlinedButton(
+                        text = "View Map",
+                        onClick = onNavigateToMap,
+                        icon = Icons.Outlined.Map,
+                        borderColor = CardBorderColor,
+                        contentColor = TextNavy,
+                        modifier = Modifier.weight(1f),
+                        height = 48.dp
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DashboardHeader(
+    onProfileClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(top = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            RoadTwinLogoMark()
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "RoadTwin",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        color = TextNavy,
+                        fontSize = 21.sp
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = "AI",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        color = RoadTwinBlue,
+                        fontSize = 21.sp
+                    )
+                }
+                Text(
+                    text = "Smarter Roads • Safer Journeys",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 11.sp,
+                    color = TextMediumGray,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .size(42.dp)
+                .clip(CircleShape)
+                .background(RoadTwinBlueLight)
+                .clickable(onClick = onProfileClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = "Profile",
+                tint = RoadTwinBlue,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun RoadTwinLogoMark(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(RoadTwinBlue, RoadTwinBlueDark)
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.size(22.dp)) {
+            val w = size.width
+            val h = size.height
+
+            // Perspective trapezoid path representing the road ahead
+            val roadPath = Path().apply {
+                moveTo(w * 0.35f, h * 0.16f)
+                lineTo(w * 0.65f, h * 0.16f)
+                lineTo(w * 0.90f, h * 0.86f)
+                lineTo(w * 0.10f, h * 0.86f)
+                close()
+            }
+            drawPath(
+                path = roadPath,
+                color = Color.White.copy(alpha = 0.28f)
+            )
+
+            // Dashed center road dividers
+            val strokeW = 2.dp.toPx()
+            drawLine(
+                color = Color.White,
+                start = Offset(w * 0.5f, h * 0.22f),
+                end = Offset(w * 0.5f, h * 0.44f),
+                strokeWidth = strokeW,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color.White,
+                start = Offset(w * 0.5f, h * 0.54f),
+                end = Offset(w * 0.5f, h * 0.80f),
+                strokeWidth = strokeW * 1.25f,
+                cap = StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+fun DashboardGreeting(modifier: Modifier = Modifier) {
+    val greeting = remember {
+        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        when (hour) {
+            in 4..11 -> "Good Morning,"
+            in 12..16 -> "Good Afternoon,"
+            in 17..21 -> "Good Evening,"
+            else -> "Good Evening,"
+        }
+    }
+
+    Column(modifier = modifier.padding(top = 2.dp)) {
+        Text(
+            text = greeting,
+            style = MaterialTheme.typography.bodyMedium,
+            color = TextMediumGray,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = "Operator",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.ExtraBold,
+            color = TextNavy
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "Let's make our roads safer today!",
+            style = MaterialTheme.typography.bodySmall,
+            color = TextMediumGray
+        )
+    }
+}
+
+@Composable
+fun StartMonitoringHeroCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(82.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(RoadTwinBlue, RoadTwinBlueDark)
+                    )
+                )
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    // Play icon in semi-translucent circular container
+                    Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, CardBorderColor),
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = BackgroundWhite)
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.22f)),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.Description,
+                            imageVector = Icons.Filled.PlayArrow,
                             contentDescription = null,
-                            tint = TextDarkCharcoal,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "View Reports",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextDarkCharcoal
+                            tint = Color.White,
+                            modifier = Modifier.size(30.dp)
                         )
                     }
 
-                    OutlinedButton(
-                        onClick = onNavigateToMap,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, CardBorderColor),
-                        colors = ButtonDefaults.outlinedButtonColors(containerColor = BackgroundWhite)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Map,
-                            contentDescription = null,
-                            tint = TextDarkCharcoal,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column {
                         Text(
-                            text = "View Map",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextDarkCharcoal
+                            text = "START MONITORING",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            letterSpacing = 0.6.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Detect potholes in real-time",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.88f),
+                            fontWeight = FontWeight.Normal,
+                            fontSize = 12.sp
                         )
                     }
                 }
+
+                // Right arrow icon container
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = "Start Monitoring",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+fun RoadHealthScoreCard(
+    score: Int?,
+    hasSessions: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val displayScore = score ?: 100
+    val (statusText, statusColor) = when {
+        displayScore >= 80 -> "Excellent" to Color(0xFF4ADE80)
+        displayScore >= 65 -> "Good" to Color(0xFF86EFAC)
+        displayScore >= 50 -> "Moderate" to Color(0xFFFDE047)
+        displayScore >= 30 -> "Poor" to Color(0xFFFDBA74)
+        else -> "Critical" to Color(0xFFF87171)
+    }
+
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(Color(0xFF0F172A), Color(0xFF1E293B))
+                    )
+                )
+                .padding(20.dp)
+        ) {
+            Column {
+                // Top Row: Title & Trend Pill
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ROAD HEALTH SCORE",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.6.sp
+                    )
+
+                    Surface(
+                        color = Color.White.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (hasSessions) "↗ Improving" else "• Ready",
+                                color = Color(0xFF86EFAC),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Score + Status + 5-Bar Visualizer Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column {
+                        Text(
+                            text = "$displayScore / 100",
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            fontSize = 32.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (!hasSessions && score == null) "Optimal • No defects detected" else statusText,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = statusColor,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // 5-Bar Road Quality Visualizer
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.Bottom,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    ) {
+                        val activeBars = ((displayScore / 100f) * 5).toInt().coerceIn(1, 5)
+                        listOf(12, 18, 24, 30, 36).forEachIndexed { index, heightDp ->
+                            val isBarActive = index < activeBars
+                            Box(
+                                modifier = Modifier
+                                    .width(6.dp)
+                                    .height(heightDp.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(
+                                        if (isBarActive) statusColor else Color.White.copy(alpha = 0.2f)
+                                    )
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Horizontal Progress Meter Bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color.White.copy(alpha = 0.18f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth((displayScore / 100f).coerceIn(0.05f, 1f))
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(statusColor)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatisticsGrid(
+    totalPotholes: Int,
+    pendingReports: Int,
+    syncedReports: Int,
+    highSeverityCount: Int,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            HomeStatCard(
+                title = "Total Potholes",
+                count = "$totalPotholes",
+                icon = Icons.Outlined.WarningAmber,
+                iconTint = RoadTwinRed,
+                iconBg = RoadTwinRedLight,
+                modifier = Modifier.weight(1f)
+            )
+            HomeStatCard(
+                title = "Pending Reports",
+                count = "$pendingReports",
+                icon = Icons.Outlined.ReportProblem,
+                iconTint = RoadTwinOrange,
+                iconBg = RoadTwinOrangeLight,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            HomeStatCard(
+                title = "Synced Reports",
+                count = "$syncedReports",
+                icon = Icons.Outlined.CloudDone,
+                iconTint = RoadTwinGreen,
+                iconBg = RoadTwinGreenLight,
+                modifier = Modifier.weight(1f)
+            )
+            HomeStatCard(
+                title = "High / Critical",
+                count = "$highSeverityCount",
+                icon = Icons.Outlined.Shield,
+                iconTint = RoadTwinRed,
+                iconBg = RoadTwinRedLight,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -366,25 +605,31 @@ fun HomeStatCard(
     count: String,
     icon: ImageVector,
     iconTint: Color,
+    iconBg: Color,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = BackgroundWhite,
-        border = BorderStroke(1.dp, CardBorderColor),
-        shadowElevation = 1.dp,
-        modifier = modifier
+    RoadTwinCard(
+        modifier = modifier,
+        cornerRadius = 16.dp
     ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(22.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconBg),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
 
             Text(
                 text = title,
@@ -397,171 +642,121 @@ fun HomeStatCard(
                 text = count,
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.ExtraBold,
-                color = TextDarkCharcoal
+                color = TextNavy
             )
         }
     }
 }
 
 @Composable
-fun SparklineCanvas(color: Color, isActive: Boolean) {
-    Canvas(modifier = Modifier.width(100.dp).height(44.dp)) {
-        val w = size.width
-        val h = size.height
-
-        val path = Path().apply {
-            if (isActive) {
-                moveTo(0f, h * 0.7f)
-                cubicTo(w * 0.3f, h * 0.9f, w * 0.6f, h * 0.2f, w, h * 0.4f)
-            } else {
-                moveTo(0f, h * 0.5f)
-                lineTo(w, h * 0.5f)
-            }
+fun RecentActivityEmptyState(modifier: Modifier = Modifier) {
+    RoadTwinCard(
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.History,
+                contentDescription = null,
+                tint = TextDisabled,
+                modifier = Modifier.size(36.dp)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "No recent activity",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMediumGray,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Start monitoring to inspect and record roads.",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextDisabled
+            )
         }
-
-        drawPath(
-            path = path,
-            color = color,
-            style = Stroke(width = 3.dp.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
-        )
     }
 }
 
 @Composable
-fun RecentSessionCard(
+fun RecentSessionItem(
     session: MonitoringSessionEntity,
     onClick: () -> Unit
 ) {
-    val sdf = remember { SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()) }
+    val sdf = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
     val timeText = remember(session.startTime) { sdf.format(Date(session.startTime)) }
+    val hasPotholes = session.totalPotholes > 0
+    val locationTitle = remember(session) {
+        when {
+            session.startAddress.isNotBlank() -> session.startAddress
+            session.startLatitude != 0.0 || session.startLongitude != 0.0 -> "GPS location recorded"
+            session.title.isNotBlank() -> session.title
+            else -> "Monitoring Session"
+        }
+    }
 
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = BackgroundWhite,
-        border = BorderStroke(1.dp, CardBorderColor),
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }
+    RoadTwinCard(
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick,
+        cornerRadius = 14.dp
     ) {
         Row(
-            modifier = Modifier.padding(14.dp).fillMaxWidth(),
+            modifier = Modifier
+                .padding(14.dp)
+                .fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                Text(
-                    text = session.startAddress.ifBlank { session.title },
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextDarkCharcoal,
-                    maxLines = 1
-                )
-                Text(
-                    text = "$timeText • ${String.format(Locale.US, "%.2f km", session.distanceKm)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextMediumGray
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(if (session.totalPotholes > 0) SeverityHigh.copy(alpha = 0.12f) else SeverityLow.copy(alpha = 0.12f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
             ) {
-                Text(
-                    text = "${session.totalPotholes} Potholes",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = if (session.totalPotholes > 0) SeverityHigh else SeverityLow
-                )
+                // Pin Icon
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(if (hasPotholes) RoadTwinRedLight else RoadTwinGreenLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.LocationOn,
+                        contentDescription = null,
+                        tint = if (hasPotholes) RoadTwinRed else RoadTwinGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                Column {
+                    Text(
+                        text = locationTitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextNavy,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "${session.totalPotholes} ${if (session.totalPotholes == 1) "pothole" else "potholes"} • $timeText",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMediumGray
+                    )
+                }
             }
+
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = TextDisabled,
+                modifier = Modifier.size(20.dp)
+            )
         }
-    }
-}
-
-@Composable
-fun DashboardBottomBar(
-    currentScreen: String,
-    onHomeClick: () -> Unit,
-    onMapClick: () -> Unit,
-    onCameraClick: () -> Unit,
-    onReportsClick: () -> Unit,
-    onSettingsClick: () -> Unit,
-    onProfileClick: () -> Unit
-) {
-    NavigationBar(
-        containerColor = BackgroundWhite,
-        tonalElevation = 2.dp,
-        modifier = Modifier.height(72.dp),
-        windowInsets = WindowInsets.navigationBars
-    ) {
-        NavigationBarItem(
-            selected = currentScreen == "home",
-            onClick = onHomeClick,
-            icon = { Icon(Icons.Default.Home, contentDescription = "Home") },
-            label = { Text("Home", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = RoadTwinOrange,
-                selectedTextColor = RoadTwinOrange,
-                indicatorColor = RoadTwinOrangeLight,
-                unselectedIconColor = TextMediumGray,
-                unselectedTextColor = TextMediumGray
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == "reports",
-            onClick = onReportsClick,
-            icon = { Icon(Icons.Default.Description, contentDescription = "Reports") },
-            label = { Text("Reports", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = RoadTwinOrange,
-                selectedTextColor = RoadTwinOrange,
-                indicatorColor = RoadTwinOrangeLight,
-                unselectedIconColor = TextMediumGray,
-                unselectedTextColor = TextMediumGray
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == "map",
-            onClick = onMapClick,
-            icon = { Icon(Icons.Default.Place, contentDescription = "Map") },
-            label = { Text("Map", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = RoadTwinOrange,
-                selectedTextColor = RoadTwinOrange,
-                indicatorColor = RoadTwinOrangeLight,
-                unselectedIconColor = TextMediumGray,
-                unselectedTextColor = TextMediumGray
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == "settings",
-            onClick = onSettingsClick,
-            icon = { Icon(Icons.Default.Tune, contentDescription = "Settings") },
-            label = { Text("Settings", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = RoadTwinOrange,
-                selectedTextColor = RoadTwinOrange,
-                indicatorColor = RoadTwinOrangeLight,
-                unselectedIconColor = TextMediumGray,
-                unselectedTextColor = TextMediumGray
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen == "profile",
-            onClick = onProfileClick,
-            icon = { Icon(Icons.Default.Person, contentDescription = "Profile") },
-            label = { Text("Profile", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = RoadTwinOrange,
-                selectedTextColor = RoadTwinOrange,
-                indicatorColor = RoadTwinOrangeLight,
-                unselectedIconColor = TextMediumGray,
-                unselectedTextColor = TextMediumGray
-            )
-        )
     }
 }

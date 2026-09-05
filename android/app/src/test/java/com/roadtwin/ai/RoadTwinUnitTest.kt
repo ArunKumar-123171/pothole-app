@@ -35,7 +35,7 @@ class RoadTwinUnitTest {
     }
 
     @Test
-    fun testDetectionTrackerRequiresThreeFramesForConfirmation() {
+    fun testDetectionTrackerRequiresStableFramesForConfirmation() {
         val tracker = DetectionTracker()
         var confirmedCount = 0
 
@@ -55,7 +55,7 @@ class RoadTwinUnitTest {
         tracker.update(listOf(detection)) { confirmedCount++ }
         assertEquals("Frame 2 should not trigger confirmation", 0, confirmedCount)
 
-        // Frame 3 (Stability threshold met: 3 consecutive frames)
+        // Frame 3 (Stability threshold met: minStableFrames = 3)
         tracker.update(listOf(detection)) { confirmedCount++ }
         assertEquals("Frame 3 should trigger confirmation", 1, confirmedCount)
 
@@ -92,7 +92,8 @@ class RoadTwinUnitTest {
         // First check: should not be duplicate (and records coordinate)
         assertFalse(tracker.isDuplicateLocation(lat, lon))
 
-        // Second check within same location (< 20m): should be detected as duplicate
+        // Wait slightly and test duplicate within same spot (< 3m)
+        Thread.sleep(600)
         assertTrue(tracker.isDuplicateLocation(lat, lon))
 
         // Check distant location (> 1km away): should not be duplicate
@@ -109,16 +110,17 @@ class RoadTwinUnitTest {
 
         // Initial record
         assertFalse(tracker.isDuplicateLocation(lat1, lon1))
+        Thread.sleep(600)
 
-        // Very close coordinate (~5 meters away): suppressed
-        val closeLat = 11.016840
+        // Very close coordinate (~1 meter away): suppressed
+        val closeLat = 11.016808
         val closeLon = 76.955800
-        assertTrue("Location within 20m must be suppressed", tracker.isDuplicateLocation(closeLat, closeLon))
+        assertTrue("Location within 3m must be suppressed", tracker.isDuplicateLocation(closeLat, closeLon))
 
-        // Coordinate ~50 meters away: allowed
-        val farLat = 11.017300
-        val farLon = 76.955800
-        assertFalse("Location >20m must not be suppressed", tracker.isDuplicateLocation(farLat, farLon))
+        // Coordinate ~10 meters away: allowed
+        val distinctLat = 11.016890
+        val distinctLon = 76.955800
+        assertFalse("Location >3m must not be suppressed", tracker.isDuplicateLocation(distinctLat, distinctLon))
     }
 
     @Test

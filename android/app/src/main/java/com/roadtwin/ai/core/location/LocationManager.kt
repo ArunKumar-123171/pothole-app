@@ -3,14 +3,17 @@ package com.roadtwin.ai.core.location
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Address
 import android.location.Geocoder
 import android.location.Location
 import android.os.Build
 import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import com.google.android.gms.location.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -18,6 +21,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
 import kotlin.coroutines.resume
 import kotlin.math.*
@@ -45,54 +49,136 @@ class LocationManager(private val context: Context) {
     }
 
     /**
-     * Suspends and fetches the current high-accuracy GPS location.
-     * Returns null if permissions are denied or location is unavailable.
+     * Checks if Android system Location Services (GPS or Network provider) are enabled.
+     */
+    fun isLocationServicesEnabled(): Boolean {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+            ?: return false
+        return try {
+            LocationManagerCompat.isLocationEnabled(lm)
+        } catch (e: Exception) {
+            lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ||
+            lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)
+        }
+    }
+
+    /**
+     * Checks if Google Play Services location settings satisfy PRIORITY_HIGH_ACCURACY.
+     * If resolution is required, invokes the system resolution dialog on the given activity.
+     */
+    fun requestLocationEnable(
+        activity: android.app.Activity,
+        requestCode: Int = 1001,
+        onSatisfied: () -> Unit = {},
+        onFailed: () -> Unit = {}
+    ) {
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1500L).build()
+        val builder = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+            .setAlwaysShow(true)
+
+        val client = LocationServices.getSettingsClient(activity)
+        val task = client.checkLocationSettings(builder.build())
+
+        task.addOnSuccessListener {
+            Log.d(TAG, "Location settings satisfied")
+            onSatisfied()
+        }.addOnFailureListener { exception ->
+            if (exception is com.google.android.gms.common.api.ResolvableApiException) {
+                try {
+                    Log.d(TAG, "Location resolution required, starting resolution dialog")
+                    exception.startResolutionForResult(activity, requestCode)
+                } catch (sendEx: Exception) {
+                    Log.w(TAG, "Failed to start resolution for result: ${sendEx.message}, opening settings directly")
+                    openLocationSettings(activity)
+                    onFailed()
+                }
+            } else {
+                Log.w(TAG, "Location settings check failed, launching system location settings")
+                openLocationSettings(activity)
+                onFailed()
+            }
+        }
+    }
+
+    /**
+     * Retrieves the most recent cached location if available.
      */
     @SuppressLint("MissingPermission")
-    suspend fun getCurrentLocation(): Location? = suspendCancellableCoroutine { continuation ->
-        if (!hasLocationPermission()) {
-            continuation.resume(null)
-            return@suspendCancellableCoroutine
+    fun getLastKnownLocation(): Location? {
+        if (!hasLocationPermission() || !isLocationServicesEnabled()) return null
+        return try {
+            val lm = context.getSystemService(Context.LOCATION_SERVICE) as? android.location.LocationManager
+            val gpsLoc = lm?.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+            val netLoc = lm?.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+            when {
+                gpsLoc != null && netLoc != null -> if (gpsLoc.time > netLoc.time) gpsLoc else netLoc
+                gpsLoc != null -> gpsLoc
+                else -> netLoc
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Suspends and fetches the current high-accuracy GPS location with a strict timeout.
+     * Returns null if permissions are denied or location is unavailable (never hangs).
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun getCurrentLocation(): Location? {
+        if (!hasLocationPermission() || !isLocationServicesEnabled()) {
+            return null
+        }
+        val cached = getLastKnownLocation()
+        if (cached != null && (System.currentTimeMillis() - cached.time) < 10000) {
+            return cached
         }
 
-        val hasFine = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+        return withContext(Dispatchers.IO) {
+            withTimeoutOrNull(2000L) {
+                suspendCancellableCoroutine { continuation ->
+                    val hasFine = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
 
-        val priority = if (hasFine) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+                    val priority = if (hasFine) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
 
-        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-            if (location != null && (System.currentTimeMillis() - location.time) < 15000) {
-                continuation.resume(location)
-            } else {
-                val locationRequest = LocationRequest.Builder(priority, 1000)
-                    .setMaxUpdates(1)
-                    .build()
+                    fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                        if (location != null && (System.currentTimeMillis() - location.time) < 15000) {
+                            if (continuation.isActive) continuation.resume(location)
+                        } else {
+                            val locationRequest = LocationRequest.Builder(priority, 1000)
+                                .setMaxUpdates(1)
+                                .build()
 
-                val callback = object : LocationCallback() {
-                    override fun onLocationResult(result: LocationResult) {
-                        if (continuation.isActive) {
-                            continuation.resume(result.lastLocation)
+                            val callback = object : LocationCallback() {
+                                override fun onLocationResult(result: LocationResult) {
+                                    if (continuation.isActive) {
+                                        continuation.resume(result.lastLocation)
+                                    }
+                                    fusedLocationClient.removeLocationUpdates(this)
+                                }
+                            }
+
+                            continuation.invokeOnCancellation {
+                                fusedLocationClient.removeLocationUpdates(callback)
+                            }
+
+                            fusedLocationClient.requestLocationUpdates(
+                                locationRequest,
+                                callback,
+                                Looper.getMainLooper()
+                            )
                         }
-                        fusedLocationClient.removeLocationUpdates(this)
+                    }.addOnFailureListener {
+                        if (continuation.isActive) {
+                            continuation.resume(null)
+                        }
                     }
                 }
-
-                continuation.invokeOnCancellation {
-                    fusedLocationClient.removeLocationUpdates(callback)
-                }
-
-                fusedLocationClient.requestLocationUpdates(
-                    locationRequest,
-                    callback,
-                    Looper.getMainLooper()
-                )
-            }
-        }.addOnFailureListener {
-            if (continuation.isActive) {
-                continuation.resume(null)
-            }
+            } ?: cached
         }
     }
 
@@ -189,10 +275,24 @@ class LocationManager(private val context: Context) {
     }
 
     private fun formatFallbackCoordinates(lat: Double, lon: Double): String {
-        return String.format(Locale.US, "Lat: %.5f, Lon: %.5f", lat, lon)
+        return if (lat != 0.0 || lon != 0.0) "GPS location recorded" else "Location unavailable"
     }
 
     companion object {
+        /**
+         * Safely launches Android Location Settings screen.
+         */
+        fun openLocationSettings(ctx: Context) {
+            try {
+                val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                ctx.startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to open location settings: ${e.message}")
+            }
+        }
+
         /**
          * Calculates distance in kilometers between two GPS coordinates using Haversine formula.
          */

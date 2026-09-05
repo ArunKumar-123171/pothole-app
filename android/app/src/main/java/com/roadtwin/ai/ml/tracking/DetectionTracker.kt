@@ -19,6 +19,7 @@ data class TrackedPothole(
 )
 
 data class RecentReport(
+    val trackId: Int,
     val latitude: Double,
     val longitude: Double,
     val timestamp: Long
@@ -31,27 +32,44 @@ class DetectionTracker {
 
     /**
      * Updates tracks with new detections from the current camera frame.
-     * Triggers the callback for newly confirmed stable potholes (3+ compatible frames).
+     * Triggers the callback for newly confirmed stable potholes.
      */
     fun update(
         detections: List<DetectionResult>,
-        onPotholeConfirmed: (DetectionResult) -> Unit
+        onPotholeConfirmed: (TrackedPothole, DetectionResult) -> Unit
     ) {
         val currentTime = System.currentTimeMillis()
 
-        // 1. Match new detections to existing tracks using IoU
+        // 1. Match new detections to existing tracks using IoU + Centroid motion dynamics
         val unmatchedDetections = detections.toMutableList()
         val matchedTracks = mutableSetOf<TrackedPothole>()
 
-        for (track in activeTracks) {
+        val sortedTracks = activeTracks.sortedByDescending { it.consecutiveFrames }
+
+        for (track in sortedTracks) {
             var bestMatch: DetectionResult? = null
-            var maxIoU = 0.30f // Minimum overlap to consider it the same pothole object
+            var bestScore = -1f
+
+            val trackCenterX = (track.boundingBox.left + track.boundingBox.right) / 2f
+            val trackCenterY = (track.boundingBox.top + track.boundingBox.bottom) / 2f
 
             for (detection in unmatchedDetections) {
+                val detCenterX = (detection.boundingBox.left + detection.boundingBox.right) / 2f
+                val detCenterY = (detection.boundingBox.top + detection.boundingBox.bottom) / 2f
+
+                val dist = hypot(detCenterX - trackCenterX, detCenterY - trackCenterY)
                 val iou = NMS.calculateIoU(track.boundingBox, detection.boundingBox)
-                if (iou > maxIoU) {
-                    maxIoU = iou
-                    bestMatch = detection
+
+                // In forward vehicle movement, potholes shift downward (detCenterY >= trackCenterY - 0.08)
+                val isCompatibleMotion = detCenterY >= trackCenterY - 0.08f && dist < 0.25f
+                val isIoUMatch = iou >= 0.15f
+
+                if (isIoUMatch || isCompatibleMotion) {
+                    val score = (iou * 2.0f) + (1.0f - dist.coerceAtMost(1.0f))
+                    if (score > bestScore) {
+                        bestScore = score
+                        bestMatch = detection
+                    }
                 }
             }
 
@@ -62,11 +80,11 @@ class DetectionTracker {
                 matchedTracks.add(track)
                 unmatchedDetections.remove(bestMatch)
 
-                // Trigger confirmation only when stability threshold is met
+                // Trigger confirmation when stability threshold is met
                 if (track.consecutiveFrames >= ModelConfig.minStableFrames && !track.isConfirmed) {
                     track.isConfirmed = true
                     Log.d(TAG, "Pothole track #${track.id} confirmed stable after ${track.consecutiveFrames} frames.")
-                    onPotholeConfirmed(bestMatch)
+                    onPotholeConfirmed(track, bestMatch)
                 }
             }
         }
@@ -84,14 +102,26 @@ class DetectionTracker {
             Log.d(TAG, "Started tracking new candidate pothole #${newTrack.id}")
         }
 
-        // 3. Remove stale tracks (not seen for more than 500ms)
+        // 3. Remove stale tracks (not seen for more than 750ms)
         activeTracks.removeAll { track ->
-            (currentTime - track.lastSeenTime > 500) && !matchedTracks.contains(track)
+            (currentTime - track.lastSeenTime > 750) && !matchedTracks.contains(track)
         }
     }
 
     /**
+     * Backward-compatible overload accepting single-argument callback.
+     */
+    fun update(
+        detections: List<DetectionResult>,
+        onPotholeConfirmed: (DetectionResult) -> Unit
+    ) {
+        update(detections) { _, detection -> onPotholeConfirmed(detection) }
+    }
+
+    /**
      * Checks if a GPS coordinate is a duplicate of a recently reported pothole.
+     * Simultaneous tracks in the same frame/burst (<= 300ms) are never suppressed.
+     * Re-detections at the same location within the 3m cooldown window (> 300ms) are suppressed.
      */
     fun isDuplicateLocation(latitude: Double, longitude: Double): Boolean {
         if (latitude == 0.0 && longitude == 0.0) return false
@@ -105,15 +135,20 @@ class DetectionTracker {
                 latitude, longitude,
                 report.latitude, report.longitude
             )
-            if (distance < ModelConfig.cooldownDistanceMeters) {
+            val timeDiff = currentTime - report.timestamp
+            if (distance < ModelConfig.cooldownDistanceMeters && timeDiff > 300) {
                 Log.d(TAG, "Suppressed duplicate pothole detection: distance ${String.format("%.1f", distance)}m < ${ModelConfig.cooldownDistanceMeters}m")
                 return true
             }
         }
 
         // Record this coordinate for future duplicate checks
-        recentReports.add(RecentReport(latitude, longitude, currentTime))
+        recentReports.add(RecentReport(0, latitude, longitude, currentTime))
         return false
+    }
+
+    fun isDuplicateLocation(trackId: Int, latitude: Double, longitude: Double): Boolean {
+        return isDuplicateLocation(latitude, longitude)
     }
 
     /**

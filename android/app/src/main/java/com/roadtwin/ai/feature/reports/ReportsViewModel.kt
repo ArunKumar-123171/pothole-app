@@ -26,14 +26,16 @@ class ReportsViewModel(
         _selectedTab,
         _isSyncing
     ) { sessions, tab, syncing ->
-        val filtered = when (tab) {
-            "All" -> sessions
-            "Pending" -> sessions.filter { it.syncStatus == "PENDING_UPLOAD" || it.syncStatus == "FAILED" }
-            "Synced" -> sessions.filter { it.syncStatus == "SYNCED" }
-            else -> sessions
+        // Reports history strictly lists finalized COMPLETED sessions
+        val completedSessions = sessions.filter { it.status == "COMPLETED" }
+        val filtered = when (tab.lowercase()) {
+            "all" -> completedSessions
+            "pending" -> completedSessions.filter { it.syncStatus == "PENDING_UPLOAD" || it.syncStatus == "FAILED" }
+            "synced" -> completedSessions.filter { it.syncStatus == "SYNCED" }
+            else -> completedSessions
         }
         ReportsUiState(
-            sessions = sessions,
+            sessions = completedSessions,
             filteredSessions = filtered,
             selectedTab = tab,
             isSyncing = syncing

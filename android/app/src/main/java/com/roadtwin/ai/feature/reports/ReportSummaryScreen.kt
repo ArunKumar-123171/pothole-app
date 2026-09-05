@@ -13,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -39,13 +41,12 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Locale
 
-private val TopOrangeBanner = Color(0xFFFF7A00)
-
 @Composable
 fun ReportSummaryScreen(
     sessionId: String,
     onBack: () -> Unit,
     onNavigateToEdit: (sessionId: String) -> Unit,
+    onNavigateToMap: () -> Unit,
     onNavigateToReports: () -> Unit
 ) {
     val context = LocalContext.current
@@ -58,8 +59,12 @@ fun ReportSummaryScreen(
     val detectionsFlow = remember(sessionId) { app.reportsRepository.getDetectionsForSession(sessionId) }
     val detections by detectionsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
 
+    val routePointsFlow = remember(sessionId) { app.reportsRepository.getRoutePointsForSession(sessionId) }
+    val routePoints by routePointsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+
     var currentPotholeIndex by remember { mutableIntStateOf(0) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var isSyncingToFirebase by remember { mutableStateOf(false) }
 
     val currentSession = session
 
@@ -67,51 +72,81 @@ fun ReportSummaryScreen(
         topBar = {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = TopOrangeBanner
+                color = BackgroundWhite,
+                border = BorderStroke(0.5.dp, CardBorderColor)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                        IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = TextNavy)
                         }
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            text = "Summary",
+                            text = "Session Summary",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = Color.White
+                            color = TextNavy
                         )
                     }
 
-                    IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = Color.White)
+                    IconButton(onClick = { showDeleteConfirm = true }, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.DeleteOutline, contentDescription = "Delete", tint = RoadTwinRed)
                     }
                 }
             }
         },
-        containerColor = BackgroundWhite
+        containerColor = BackgroundLight
     ) { innerPadding ->
         if (currentSession == null) {
             Box(
-                modifier = Modifier.fillMaxSize().padding(innerPadding),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
                 contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(color = RoadTwinOrange)
+                CircularProgressIndicator(color = RoadTwinBlue)
             }
         } else {
-            val startLatLng = LatLng(
-                if (currentSession.startLatitude != 0.0) currentSession.startLatitude else 11.0168,
-                if (currentSession.startLongitude != 0.0) currentSession.startLongitude else 76.9558
-            )
+            val validLat = when {
+                currentSession.startLatitude != 0.0 -> currentSession.startLatitude
+                currentSession.endLatitude != 0.0 -> currentSession.endLatitude
+                detections.any { it.latitude != 0.0 } -> detections.first { it.latitude != 0.0 }.latitude
+                else -> 0.0
+            }
+            val validLon = when {
+                currentSession.startLongitude != 0.0 -> currentSession.startLongitude
+                currentSession.endLongitude != 0.0 -> currentSession.endLongitude
+                detections.any { it.longitude != 0.0 } -> detections.first { it.longitude != 0.0 }.longitude
+                else -> 0.0
+            }
+            val hasValidCoords = validLat != 0.0 && validLon != 0.0
+            val startLatLng = if (hasValidCoords) LatLng(validLat, validLon) else null
             val cameraPositionState = rememberCameraPositionState {
-                position = CameraPosition.fromLatLngZoom(startLatLng, 14f)
+                if (startLatLng != null) {
+                    position = CameraPosition.fromLatLngZoom(startLatLng, 14f)
+                }
+            }
+
+            // Duration calculation
+            val durationSec = if (currentSession.endTime != null && currentSession.endTime!! > currentSession.startTime) {
+                (currentSession.endTime!! - currentSession.startTime) / 1000
+            } else {
+                0L
+            }
+            val hrs = durationSec / 3600
+            val mins = (durationSec % 3600) / 60
+            val secs = durationSec % 60
+            val durationFormatted = if (hrs > 0) {
+                String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs)
+            } else {
+                String.format(Locale.US, "00:%02d:%02d", mins, secs)
             }
 
             Column(
@@ -119,12 +154,15 @@ fun ReportSummaryScreen(
                     .fillMaxSize()
                     .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Embedded Google Map View
-                Box(
+                // 1. Top Embedded Route Map Card
+                RoadTwinCard(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(200.dp)
+                        .height(180.dp),
+                    cornerRadius = 16.dp
                 ) {
                     GoogleMap(
                         modifier = Modifier.fillMaxSize(),
@@ -133,9 +171,25 @@ fun ReportSummaryScreen(
                     ) {
                         if (currentSession.startLatitude != 0.0) {
                             Marker(
-                                state = rememberMarkerState(position = startLatLng),
+                                state = rememberMarkerState(position = LatLng(currentSession.startLatitude, currentSession.startLongitude)),
                                 title = "Start Point",
                                 icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
+                            )
+                        }
+
+                        if (routePoints.size > 1) {
+                            Polyline(
+                                points = routePoints.map { LatLng(it.latitude, it.longitude) },
+                                color = RoadTwinBlue,
+                                width = 8f
+                            )
+                        }
+
+                        if (currentSession.endLatitude != 0.0 && (currentSession.endLatitude != currentSession.startLatitude || currentSession.endLongitude != currentSession.startLongitude)) {
+                            Marker(
+                                state = rememberMarkerState(position = LatLng(currentSession.endLatitude, currentSession.endLongitude)),
+                                title = "End Point",
+                                icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
                             )
                         }
 
@@ -144,239 +198,230 @@ fun ReportSummaryScreen(
                                 Marker(
                                     state = rememberMarkerState(position = LatLng(d.latitude, d.longitude)),
                                     title = "Pothole ${d.detectionId}",
-                                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+                                    icon = BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
                                 )
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Route Address Details (Start & End with dot-line indicator)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp)
-                ) {
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(top = 4.dp, end = 12.dp)
-                        ) {
-                            Box(modifier = Modifier.size(10.dp).background(Color.Black, CircleShape))
-                            Box(modifier = Modifier.width(2.dp).height(44.dp).background(Color.Black))
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                        }
-
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Column {
-                                Text("Start", style = MaterialTheme.typography.labelSmall, color = TextMediumGray)
-                                Text(
-                                    text = currentSession.startAddress.ifBlank { "Location pending" },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextDarkCharcoal,
-                                    fontWeight = FontWeight.Medium,
-                                    lineHeight = 18.sp
-                                )
-                            }
-
-                            Column {
-                                Text("End", style = MaterialTheme.typography.labelSmall, color = TextMediumGray)
-                                Text(
-                                    text = currentSession.endAddress.ifBlank { currentSession.startAddress },
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = TextDarkCharcoal,
-                                    fontWeight = FontWeight.Medium,
-                                    lineHeight = 18.sp
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-                    HorizontalDivider(color = SurfaceVariantLight, thickness = 1.dp)
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Distance & Total Potholes Metrics Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                // 2. Metrics Card (Distance Covered, Duration, Total Potholes)
+                RoadTwinCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column {
-                            Text("Distance", style = MaterialTheme.typography.labelSmall, color = TextMediumGray)
-                            Text(
-                                text = String.format(Locale.US, "%.2f km", currentSession.distanceKm),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = TextDarkCharcoal
-                            )
-                        }
-
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text("Total Potholes", style = MaterialTheme.typography.labelSmall, color = TextMediumGray)
-                            Text(
-                                text = "${currentSession.totalPotholes}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = TextDarkCharcoal
-                            )
-                        }
+                        SummaryMetricRow(
+                            icon = Icons.Outlined.NearMe,
+                            label = "Distance Covered",
+                            value = String.format(Locale.US, "%.2f km", currentSession.distanceKm)
+                        )
+                        HorizontalDivider(color = CardBorderColor, thickness = 0.8.dp)
+                        SummaryMetricRow(
+                            icon = Icons.Outlined.Timer,
+                            label = "Duration",
+                            value = durationFormatted
+                        )
+                        HorizontalDivider(color = CardBorderColor, thickness = 0.8.dp)
+                        SummaryMetricRow(
+                            icon = Icons.Outlined.WarningAmber,
+                            label = "Total Potholes",
+                            value = "${currentSession.totalPotholes}"
+                        )
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                // 3. Severity Breakdown Card (Critical, High, Medium, Low)
+                RoadTwinCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Severity Summary",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextNavy
+                        )
 
-                    // Pothole Carousel Card with "< 1 of N >"
-                    if (detections.isNotEmpty()) {
-                        val activeIndex = currentPotholeIndex.coerceIn(0, detections.lastIndex)
-                        val activeDetection = detections[activeIndex]
+                        Spacer(modifier = Modifier.height(2.dp))
 
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = BackgroundWhite,
-                            border = BorderStroke(1.dp, CardBorderColor),
-                            shadowElevation = 1.dp,
-                            modifier = Modifier.fillMaxWidth()
+                        SeverityCountRow("Critical", currentSession.criticalSeverityCount, RoadTwinRed)
+                        SeverityCountRow("High", currentSession.highSeverityCount, Color(0xFFEA580C))
+                        SeverityCountRow("Medium", currentSession.mediumSeverityCount, RoadTwinOrange)
+                        SeverityCountRow("Low", currentSession.lowSeverityCount, RoadTwinGreen)
+                    }
+                }
+
+                // 4. Pothole Evidence Carousel Preview
+                if (detections.isNotEmpty()) {
+                    val activeIndex = currentPotholeIndex.coerceIn(0, detections.lastIndex)
+                    val activeDetection = detections[activeIndex]
+
+                    RoadTwinCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Column(
-                                modifier = Modifier.padding(14.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Pagination Row: < 1 of 2 >
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.Center,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
+                                Text(
+                                    text = "Captured Evidence",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextNavy
+                                )
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                     IconButton(
                                         onClick = { if (currentPotholeIndex > 0) currentPotholeIndex-- },
                                         enabled = currentPotholeIndex > 0,
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(Icons.Default.ChevronLeft, contentDescription = "Prev", tint = if (currentPotholeIndex > 0) TextDarkCharcoal else TextDisabled)
+                                        Icon(Icons.Default.ChevronLeft, contentDescription = "Prev", tint = if (currentPotholeIndex > 0) TextNavy else TextDisabled)
                                     }
-
-                                    Spacer(Modifier.width(12.dp))
 
                                     Text(
                                         text = "${activeIndex + 1} of ${detections.size}",
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        style = MaterialTheme.typography.bodySmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = TextDarkCharcoal
+                                        color = TextNavy
                                     )
-
-                                    Spacer(Modifier.width(12.dp))
 
                                     IconButton(
                                         onClick = { if (currentPotholeIndex < detections.lastIndex) currentPotholeIndex++ },
                                         enabled = currentPotholeIndex < detections.lastIndex,
                                         modifier = Modifier.size(28.dp)
                                     ) {
-                                        Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = if (currentPotholeIndex < detections.lastIndex) TextDarkCharcoal else TextDisabled)
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Captured Pothole Image with Green Badge
-                                val imageFile = File(activeDetection.imagePath)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(180.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(SurfaceLight),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    if (imageFile.exists()) {
-                                        val bitmap = remember(activeDetection.imagePath) {
-                                            BitmapFactory.decodeFile(imageFile.absolutePath)
-                                        }
-                                        if (bitmap != null) {
-                                            Image(
-                                                bitmap = bitmap.asImageBitmap(),
-                                                contentDescription = "Pothole photo",
-                                                modifier = Modifier.fillMaxSize(),
-                                                contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                                            )
-                                        } else {
-                                            Text("Photo saved locally", color = TextMediumGray)
-                                        }
-                                    } else {
-                                        Text("Photo saved locally", color = TextMediumGray)
-                                    }
-
-                                    // Green Confidence Badge ("91%") at bottom right of image
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.BottomEnd)
-                                            .padding(8.dp)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(LiveGreen)
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = String.format(Locale.US, "%d%%", (activeDetection.confidence * 100).toInt()),
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 12.sp
-                                        )
+                                        Icon(Icons.Default.ChevronRight, contentDescription = "Next", tint = if (currentPotholeIndex < detections.lastIndex) TextNavy else TextDisabled)
                                     }
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            val imageFile = File(activeDetection.imagePath)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(170.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SurfaceLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (imageFile.exists()) {
+                                    val bitmap = remember(activeDetection.imagePath) {
+                                        BitmapFactory.decodeFile(imageFile.absolutePath)
+                                    }
+                                    if (bitmap != null) {
+                                        Image(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = "Pothole photo",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text("Photo saved locally", color = TextMediumGray)
+                                    }
+                                } else {
+                                    Text("Photo saved locally", color = TextMediumGray)
+                                }
+
+                                // Top Right Severity Badge
+                                SeverityBadge(
+                                    severity = activeDetection.severity,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(8.dp)
+                                )
+                            }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // 3 Action Buttons: [ Discard ] [ Edit ] [ Save Report ]
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Discard Button
-                        OutlinedButton(
-                            onClick = { showDeleteConfirm = true },
-                            modifier = Modifier.weight(1f).height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.5.dp, RoadTwinOrange),
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = BackgroundWhite)
-                        ) {
-                            Text("Discard", color = RoadTwinOrange, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-
-                        // Edit Button
-                        OutlinedButton(
-                            onClick = { onNavigateToEdit(sessionId) },
-                            modifier = Modifier.weight(1f).height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.5.dp, RoadTwinOrange),
-                            colors = ButtonDefaults.outlinedButtonColors(containerColor = BackgroundWhite)
-                        ) {
-                            Text("Edit", color = TextDarkCharcoal, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-
-                        // Save Report Button (Solid Orange)
-                        Button(
-                            onClick = {
-                                Toast.makeText(context, "Report saved locally", Toast.LENGTH_SHORT).show()
-                                onNavigateToReports()
-                            },
-                            modifier = Modifier.weight(1.4f).height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = RoadTwinOrange)
-                        ) {
-                            Text("Save Report", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(32.dp))
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 5. Primary Action: SAVE & SYNC (Green Button)
+                RoadTwinButton(
+                    text = "SAVE & SYNC",
+                    onClick = {
+                        scope.launch {
+                            isSyncingToFirebase = true
+                            try {
+                                app.reportsRepository.syncPendingReports()
+                                Toast.makeText(context, "Session saved and synced successfully!", Toast.LENGTH_SHORT).show()
+                                onNavigateToReports()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Report saved locally (sync queued)", Toast.LENGTH_SHORT).show()
+                                onNavigateToReports()
+                            } finally {
+                                isSyncingToFirebase = false
+                            }
+                        }
+                    },
+                    icon = Icons.Default.CloudDone,
+                    containerColor = RoadTwinGreen,
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 52.dp,
+                    cornerRadius = 14.dp
+                )
+
+                // 6. Firebase Upload Button: SEND TO FIREBASE (Blue Button)
+                RoadTwinButton(
+                    text = if (isSyncingToFirebase) "Sending..." else "Send to Firebase",
+                    onClick = {
+                        scope.launch {
+                            isSyncingToFirebase = true
+                            try {
+                                val result = app.syncManager.syncPendingReports()
+                                if (result.success) {
+                                    Toast.makeText(context, "Uploaded metadata to Firebase Firestore!", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Sync status: ${result.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Sync enqueued: ${e.message}", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isSyncingToFirebase = false
+                            }
+                        }
+                    },
+                    icon = Icons.Default.CloudUpload,
+                    containerColor = RoadTwinBlue,
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 50.dp,
+                    cornerRadius = 14.dp,
+                    enabled = !isSyncingToFirebase
+                )
+
+                // 7. Secondary Action: View on Map & Edit
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    RoadTwinOutlinedButton(
+                        text = "View on Map",
+                        onClick = onNavigateToMap,
+                        icon = Icons.Outlined.Map,
+                        modifier = Modifier.weight(1f),
+                        height = 46.dp
+                    )
+
+                    RoadTwinOutlinedButton(
+                        text = "Edit Report",
+                        onClick = { onNavigateToEdit(sessionId) },
+                        icon = Icons.Outlined.Edit,
+                        borderColor = CardBorderColor,
+                        contentColor = TextNavy,
+                        modifier = Modifier.weight(1f),
+                        height = 46.dp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -385,7 +430,7 @@ fun ReportSummaryScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
             containerColor = BackgroundWhite,
-            title = { Text("Discard Report", color = TextDarkCharcoal, fontWeight = FontWeight.Bold) },
+            title = { Text("Discard Report", color = TextNavy, fontWeight = FontWeight.Bold) },
             text = { Text("Are you sure you want to discard this report session and delete all captured evidence?", color = TextMediumGray) },
             confirmButton = {
                 TextButton(onClick = {
@@ -396,7 +441,7 @@ fun ReportSummaryScreen(
                         onNavigateToReports()
                     }
                 }) {
-                    Text("Discard", color = SeverityHigh, fontWeight = FontWeight.Bold)
+                    Text("Discard", color = RoadTwinRed, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -404,6 +449,82 @@ fun ReportSummaryScreen(
                     Text("Cancel", color = TextMediumGray)
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun SummaryMetricRow(
+    icon: ImageVector,
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = RoadTwinBlue,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMediumGray,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.ExtraBold,
+            color = TextNavy
+        )
+    }
+}
+
+@Composable
+private fun SeverityCountRow(
+    label: String,
+    count: Int,
+    color: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(color)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextNavy,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        Text(
+            text = "$count",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextNavy
         )
     }
 }

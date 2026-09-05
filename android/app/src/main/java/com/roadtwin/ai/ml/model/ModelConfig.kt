@@ -16,8 +16,8 @@ object ModelConfig {
     var confidenceThreshold: Float = 0.40f
     var nmsIouThreshold: Float = 0.45f
     var minStableFrames: Int = 3
-    var cooldownDistanceMeters: Double = 20.0 // 20m spatial cooldown
-    var cooldownTimeMs: Long = 10000L // 10s temporal cooldown
+    var cooldownDistanceMeters: Double = 3.0 // 3m spatial radius
+    var cooldownTimeMs: Long = 3000L // 3s temporal cooldown
     const val MAX_DETECTIONS = 10
 
     val CLASS_NAMES = listOf("pothole")

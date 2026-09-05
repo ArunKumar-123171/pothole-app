@@ -37,6 +37,11 @@ data class ReportDetail(
 ) : NavKey
 
 @Serializable
+data class GeneratePdf(
+    val sessionId: String
+) : NavKey
+
+@Serializable
 data object Settings : NavKey
 
 @Serializable
@@ -44,3 +49,6 @@ data object Benchmarks : NavKey
 
 @Serializable
 data object Profile : NavKey
+
+@Serializable
+data object About : NavKey

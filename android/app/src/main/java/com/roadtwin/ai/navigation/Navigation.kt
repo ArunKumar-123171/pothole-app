@@ -9,8 +9,10 @@ import com.roadtwin.ai.feature.dashboard.DashboardScreen
 import com.roadtwin.ai.feature.map.MapScreen
 import com.roadtwin.ai.feature.onboarding.OnboardingScreen
 import com.roadtwin.ai.feature.onboarding.SplashScreen
+import com.roadtwin.ai.feature.profile.AboutScreen
 import com.roadtwin.ai.feature.profile.ProfileScreen
 import com.roadtwin.ai.feature.reports.EditReportScreen
+import com.roadtwin.ai.feature.reports.GeneratePdfScreen
 import com.roadtwin.ai.feature.reports.PotholeDetailScreen
 import com.roadtwin.ai.feature.reports.ReportSummaryScreen
 import com.roadtwin.ai.feature.reports.ReportsScreen
@@ -61,6 +63,7 @@ fun MainNavigation() {
                     sessionId = key.sessionId,
                     onBack = { backStack.removeLastOrNull() },
                     onNavigateToEdit = { sid -> backStack.add(EditReport(sid)) },
+                    onNavigateToMap = { backStack.add(MapView) },
                     onNavigateToReports = {
                         backStack.removeLastOrNull()
                         backStack.add(ReportsHistory)
@@ -101,7 +104,14 @@ fun MainNavigation() {
                     sessionId = key.sessionId,
                     onBack = { backStack.removeLastOrNull() },
                     onNavigateToEdit = { sid -> backStack.add(EditReport(sid)) },
-                    onNavigateToMap = { backStack.add(MapView) }
+                    onNavigateToMap = { backStack.add(MapView) },
+                    onNavigateToGeneratePdf = { sid -> backStack.add(GeneratePdf(sid)) }
+                )
+            }
+            entry<GeneratePdf> { key ->
+                GeneratePdfScreen(
+                    sessionId = key.sessionId,
+                    onBack = { backStack.removeLastOrNull() }
                 )
             }
             entry<Settings> {
@@ -133,7 +143,13 @@ fun MainNavigation() {
                     onNavigateToCamera = { backStack.add(LiveCamera) },
                     onNavigateToReports = { backStack.add(ReportsHistory) },
                     onNavigateToSettings = { backStack.add(Settings) },
-                    onNavigateToBenchmarks = { backStack.add(Benchmarks) }
+                    onNavigateToBenchmarks = { backStack.add(Benchmarks) },
+                    onNavigateToAbout = { backStack.add(About) }
+                )
+            }
+            entry<About> {
+                AboutScreen(
+                    onBack = { backStack.removeLastOrNull() }
                 )
             }
         }

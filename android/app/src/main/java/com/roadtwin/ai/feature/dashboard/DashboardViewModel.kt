@@ -29,17 +29,23 @@ class DashboardViewModel(
         repository.getAllSessions(),
         repository.getAllDetections()
     ) { sessions, detections ->
-        val totalPotholes = detections.size
-        val pending = sessions.count { it.syncStatus == "PENDING_UPLOAD" || it.syncStatus == "FAILED" }
-        val synced = sessions.count { it.syncStatus == "SYNCED" }
-        val highCritical = detections.count { it.severity == "HIGH" || it.severity == "CRITICAL" }
+        // Dashboard statistics strictly represent finalized COMPLETED reports
+        // CANCELLED and ACTIVE sessions are excluded from counters and health scores
+        val completedSessions = sessions.filter { it.status == "COMPLETED" }
+        val completedSessionIds = completedSessions.map { it.sessionId }.toSet()
+        val completedDetections = detections.filter { it.sessionId in completedSessionIds }
+
+        val totalPotholes = completedDetections.size
+        val pending = completedSessions.count { it.syncStatus == "PENDING_UPLOAD" || it.syncStatus == "FAILED" }
+        val synced = completedSessions.count { it.syncStatus == "SYNCED" }
+        val highCritical = completedDetections.count { it.severity == "HIGH" || it.severity == "CRITICAL" }
 
         // Dynamic Road Health Calculation based on actual recorded potholes
         val healthScore = if (totalPotholes > 0) {
-            val critical = detections.count { it.severity == "CRITICAL" }
-            val high = detections.count { it.severity == "HIGH" }
-            val medium = detections.count { it.severity == "MEDIUM" }
-            val low = detections.count { it.severity == "LOW" }
+            val critical = completedDetections.count { it.severity == "CRITICAL" }
+            val high = completedDetections.count { it.severity == "HIGH" }
+            val medium = completedDetections.count { it.severity == "MEDIUM" }
+            val low = completedDetections.count { it.severity == "LOW" }
             val deduction = (critical * 12) + (high * 8) + (medium * 4) + (low * 1)
             (100 - deduction).coerceIn(10, 100)
         } else {
@@ -48,13 +54,13 @@ class DashboardViewModel(
 
         DashboardUiState(
             totalPotholes = totalPotholes,
-            sessionsCount = sessions.size,
+            sessionsCount = completedSessions.size,
             pendingUploads = pending,
             syncedReports = synced,
             highSeverityCount = highCritical,
             roadHealthScore = healthScore,
-            recentSessions = sessions.take(5),
-            recentDetections = detections.take(5),
+            recentSessions = completedSessions.take(5),
+            recentDetections = completedDetections.take(5),
             isLoading = false
         )
     }.stateIn(

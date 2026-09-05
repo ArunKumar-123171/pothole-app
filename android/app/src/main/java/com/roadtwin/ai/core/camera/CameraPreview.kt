@@ -3,15 +3,14 @@ package com.roadtwin.ai.core.camera
 import android.content.Context
 import android.util.Log
 import android.util.Size
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -27,15 +26,34 @@ fun CameraPreview(
     modifier: Modifier = Modifier,
     cameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA,
     analyzer: ImageAnalysis.Analyzer? = null,
+    isFlashOn: Boolean = false,
+    zoomRatio: Float = 1.0f,
     onPreviewViewCreated: (PreviewView) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraExecutor = remember { Executors.newSingleThreadExecutor() }
+    var activeCamera by remember { mutableStateOf<Camera?>(null) }
 
     val previewView = remember {
         PreviewView(context).apply {
             scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+
+    LaunchedEffect(isFlashOn, activeCamera) {
+        try {
+            activeCamera?.cameraControl?.enableTorch(isFlashOn)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to toggle torch: ${e.message}")
+        }
+    }
+
+    LaunchedEffect(zoomRatio, activeCamera) {
+        try {
+            activeCamera?.cameraControl?.setZoomRatio(zoomRatio)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to set zoom: ${e.message}")
         }
     }
 
@@ -75,7 +93,7 @@ fun CameraPreview(
                 cameraProvider.unbindAll()
 
                 // Bind use cases to lifecycle
-                if (imageAnalysis != null) {
+                activeCamera = if (imageAnalysis != null) {
                     cameraProvider.bindToLifecycle(
                         lifecycleOwner,
                         cameraSelector,

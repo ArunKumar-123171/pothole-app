@@ -8,6 +8,7 @@ import com.roadtwin.ai.data.repository.ReportsRepository
 import com.roadtwin.ai.data.sync.SyncWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 class RoadTwinApplication : Application() {
     /** Process-lifetime scope for background tasks that outlive any single screen. */
@@ -26,14 +27,21 @@ class RoadTwinApplication : Application() {
         syncManager = FirebaseSyncManager(
             this,
             database.sessionDao(),
-            database.detectionDao()
+            database.detectionDao(),
+            database.routePointDao()
         )
         reportsRepository = DefaultReportsRepository(
             this,
             database.sessionDao(),
             database.detectionDao(),
+            database.routePointDao(),
             syncManager
         )
+
+        // Clean up any abandoned active sessions from previous crashes/process kills
+        applicationScope.launch {
+            reportsRepository.cleanupAbandonedSessions()
+        }
 
         // Schedule periodic background metadata synchronization with network constraints
         SyncWorker.schedulePeriodicSync(this)

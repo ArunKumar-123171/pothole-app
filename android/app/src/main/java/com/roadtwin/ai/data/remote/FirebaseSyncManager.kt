@@ -5,6 +5,7 @@ import android.util.Log
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.roadtwin.ai.data.local.DetectionDao
+import com.roadtwin.ai.data.local.RoutePointDao
 import com.roadtwin.ai.data.local.SessionDao
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
@@ -15,7 +16,8 @@ private const val TAG = "FirebaseSyncManager"
 class FirebaseSyncManager(
     private val context: Context,
     private val sessionDao: SessionDao,
-    private val detectionDao: DetectionDao
+    private val detectionDao: DetectionDao,
+    private val routePointDao: RoutePointDao? = null
 ) {
     /**
      * Checks if Firebase is initialized and available in the current application context.
@@ -31,7 +33,7 @@ class FirebaseSyncManager(
     }
 
     /**
-     * Synchronizes all pending monitoring sessions and their detection metadata to Firestore.
+     * Synchronizes all pending monitoring sessions, real GPS routePoints, and detection metadata to Firestore.
      * ZERO Firebase Storage dependency - uploads structured JSON-like metadata only.
      * If Firebase is unconfigured or offline, this operates safely without crashing.
      */
@@ -61,12 +63,17 @@ class FirebaseSyncManager(
         var failCount = 0
 
         for (session in pendingSessions) {
+            // Strict safeguard: ACTIVE sessions or sessions without valid endTime must NEVER be synced to Firestore
+            if (session.status != "COMPLETED" || session.endTime == null) {
+                Log.w(TAG, "Skipping session #${session.sessionId}: Cannot upload non-completed session (status=${session.status}, endTime=${session.endTime})")
+                continue
+            }
+
             try {
                 sessionDao.updateSyncStatus(session.sessionId, "UPLOADING")
 
-                // Retrieve all detections belonging to this session
+                // 1. Retrieve all detections belonging to this session
                 val detections = detectionDao.getDetectionsForSessionOnce(session.sessionId)
-
                 val detectionsData = detections.map { d ->
                     mapOf(
                         "detectionId" to d.detectionId.ifBlank { "D-${d.id}" },
@@ -85,6 +92,49 @@ class FirebaseSyncManager(
                     )
                 }
 
+                // 2. Retrieve all continuous real GPS route points for this session
+                val routePoints = routePointDao?.getRoutePointsForSessionOnce(session.sessionId) ?: emptyList()
+                val routePointsData = routePoints.map { pt ->
+                    mapOf(
+                        "latitude" to pt.latitude,
+                        "longitude" to pt.longitude,
+                        "accuracy" to pt.accuracy,
+                        "timestamp" to pt.timestamp
+                    )
+                }
+
+                val criticalCount = detections.count { it.severity.equals("CRITICAL", ignoreCase = true) }
+                val highCount = detections.count { it.severity.equals("HIGH", ignoreCase = true) }
+                val mediumCount = detections.count { it.severity.equals("MEDIUM", ignoreCase = true) }
+                val lowCount = detections.count { it.severity.equals("LOW", ignoreCase = true) }
+                val totalCount = detections.size
+
+                val syncTimestamp = System.currentTimeMillis()
+
+                // Structured startLocation (with accuracy and timestamp)
+                val startLocationData = if (session.startLatitude != 0.0 && session.startLongitude != 0.0) {
+                    mapOf(
+                        "latitude" to session.startLatitude,
+                        "longitude" to session.startLongitude,
+                        "accuracy" to (session.startAccuracy ?: 0f),
+                        "timestamp" to (session.startGpsTimestamp ?: session.startTime)
+                    )
+                } else {
+                    null
+                }
+
+                // Structured endLocation (null if no valid GPS fix was acquired at stop, never copied from start)
+                val endLocationData = if (session.endLatitude != 0.0 && session.endLongitude != 0.0) {
+                    mapOf(
+                        "latitude" to session.endLatitude,
+                        "longitude" to session.endLongitude,
+                        "accuracy" to (session.endAccuracy ?: 0f),
+                        "timestamp" to (session.endGpsTimestamp ?: session.endTime ?: syncTimestamp)
+                    )
+                } else {
+                    null
+                }
+
                 val sessionData = hashMapOf(
                     "sessionId" to session.sessionId,
                     "title" to session.title,
@@ -93,43 +143,48 @@ class FirebaseSyncManager(
                     "startTime" to session.startTime,
                     "endTime" to session.endTime,
                     "distanceKm" to session.distanceKm,
-                    "totalPotholes" to session.totalPotholes,
-                    "criticalSeverityCount" to session.criticalSeverityCount,
-                    "highSeverityCount" to session.highSeverityCount,
-                    "mediumSeverityCount" to session.mediumSeverityCount,
-                    "lowSeverityCount" to session.lowSeverityCount,
-                    "startLocation" to mapOf(
-                        "latitude" to session.startLatitude,
-                        "longitude" to session.startLongitude,
-                        "address" to session.startAddress
-                    ),
-                    "endLocation" to mapOf(
-                        "latitude" to session.endLatitude,
-                        "longitude" to session.endLongitude,
-                        "address" to session.endAddress
-                    ),
+                    "totalPotholes" to totalCount,
+                    "criticalSeverityCount" to criticalCount,
+                    "highSeverityCount" to highCount,
+                    "mediumSeverityCount" to mediumCount,
+                    "lowSeverityCount" to lowCount,
+                    "startLocation" to startLocationData,
+                    "endLocation" to endLocationData,
+                    "routePoints" to routePointsData,
                     "detections" to detectionsData,
-                    "status" to session.status,
-                    "syncedAt" to System.currentTimeMillis()
+                    "status" to "COMPLETED",
+                    "syncStatus" to "SYNCED",
+                    "syncedAt" to syncTimestamp
                 )
 
-                // Upload metadata document to Firestore
+                // Upload structured document to Firestore
                 firestore.collection("reports")
                     .document(session.sessionId)
                     .set(sessionData)
                     .await()
 
-                // Update Room state
-                sessionDao.updateSyncStatus(session.sessionId, "SYNCED")
+                // Update Room state only AFTER successful Firestore write
+                val updatedSession = session.copy(
+                    totalPotholes = totalCount,
+                    criticalSeverityCount = criticalCount,
+                    highSeverityCount = highCount,
+                    mediumSeverityCount = mediumCount,
+                    lowSeverityCount = lowCount,
+                    syncStatus = "SYNCED",
+                    syncedAt = syncTimestamp,
+                    updatedAt = syncTimestamp
+                )
+                sessionDao.update(updatedSession)
+
                 for (d in detections) {
-                    detectionDao.updateSyncStatus(d.id, "SYNCED")
+                    detectionDao.updateSyncStatus(d.id, "SYNCED", syncedAt = syncTimestamp, updatedAt = syncTimestamp)
                 }
 
                 successCount++
-                Log.d(TAG, "Successfully synced report #${session.sessionId} with ${detections.size} detections to Firestore.")
+                Log.d(TAG, "Successfully synced report #${session.sessionId} with ${routePoints.size} route points and $totalCount detections to Firestore.")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to upload metadata for session #${session.sessionId}", e)
-                sessionDao.updateSyncStatus(session.sessionId, "FAILED")
+                sessionDao.updateSyncStatus(session.sessionId, "PENDING_UPLOAD", syncedAt = null)
                 failCount++
             }
         }

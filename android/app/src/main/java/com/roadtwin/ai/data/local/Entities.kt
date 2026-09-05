@@ -16,21 +16,26 @@ data class MonitoringSessionEntity(
     val notes: String = "",
     val remarks: String = "",
     val startTime: Long = System.currentTimeMillis(),
-    val endTime: Long = System.currentTimeMillis(),
+    val endTime: Long? = null,
     val startLatitude: Double = 0.0,
     val startLongitude: Double = 0.0,
-    val startAddress: String = "Location pending",
+    val startAccuracy: Float? = null,
+    val startGpsTimestamp: Long? = null,
+    val startAddress: String = "Waiting for GPS...",
     val endLatitude: Double = 0.0,
     val endLongitude: Double = 0.0,
-    val endAddress: String = "Location pending",
+    val endAccuracy: Float? = null,
+    val endGpsTimestamp: Long? = null,
+    val endAddress: String = "",
     val distanceKm: Double = 0.0,
     val totalPotholes: Int = 0,
     val highSeverityCount: Int = 0,
     val mediumSeverityCount: Int = 0,
     val lowSeverityCount: Int = 0,
     val criticalSeverityCount: Int = 0,
-    val status: String = "COMPLETED", // ACTIVE, COMPLETED, CANCELLED
-    val syncStatus: String = "PENDING_UPLOAD", // PENDING_UPLOAD, UPLOADING, SYNCED, FAILED
+    val status: String = "ACTIVE", // ACTIVE, COMPLETED, CANCELLED
+    val syncStatus: String = "NOT_SYNCED", // NOT_SYNCED, PENDING_UPLOAD, UPLOADING, SYNCED, FAILED
+    val syncedAt: Long? = null,
     val pdfLocalPath: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
@@ -63,7 +68,25 @@ data class DetectionEntity(
     val modelInputSize: String = "416x416",
     val modelPrecision: String = "FP32",
     val confidenceThreshold: Float = 0.40f,
-    val syncStatus: String = "PENDING_UPLOAD", // PENDING_UPLOAD, SYNCED, FAILED
+    val syncStatus: String = "NOT_SYNCED", // NOT_SYNCED, PENDING_UPLOAD, SYNCED, FAILED
+    val syncedAt: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * Represents a discrete, real GPS route breadcrumb recorded during an active monitoring session.
+ * Room is the single source of truth for all traveled GPS path coordinates.
+ */
+@Entity(
+    tableName = "route_points",
+    indices = [Index(value = ["sessionId"])]
+)
+data class RoutePointEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val sessionId: String,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracy: Float,
+    val timestamp: Long = System.currentTimeMillis()
 )
